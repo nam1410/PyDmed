@@ -61,6 +61,9 @@ class Record:
 class Dataset:
     def __init__(self, str_dsname, list_patients):
         '''
+        initializes the object with a dataset name and a list of Patient objects. it first assigns the str_dsname and list_patients arguments to the corresponding object attributes self.str_dsname and self.list_patients. Then, it loops through all elements in list_patients to check if they are instances of Patient using the isinstance function. If any element is not an instance of Patient, it raises an exception with an error message.
+        '''
+        '''
         - str_dsname: the name of the dataset, a string.
         - list_patients: a list whose elements are an instance of `Patient`.
         '''
@@ -73,6 +76,13 @@ class Dataset:
     
     @staticmethod
     def balance_by_repeat(ds, func_getlabel_of_patient, newlen_each_class=None):
+        '''
+        static method 
+        inputs - dataset ds and a function func_getlabel_of_patient 
+        returns - new dataset with balanced class labels by repeating Patients in the dataset 
+        It first creates a dictionary mapping each patient in the dataset to its label using the provided func_getlabel_of_patient function. It then calculates the frequency of each label and computes the least common multiple (lcm) of the frequencies. If the input parameter newlen_each_class is not provided, the lcm is used as the number of patients for each label in the new dataset.
+        Then, for each patient in the original dataset, it calculates the number of times it needs to be repeated to reach the desired number of patients for its label in the new dataset. It creates a copy of the patient with a new unique ID for each repetition and adds it to the list of patients for the new dataset.
+        '''
         '''
         Repeats `Patients` in the dataset to make the labels balances.
         Inputs:
@@ -111,6 +121,12 @@ class Dataset:
     @staticmethod
     def splits_from(dataset, percentage_partitions):
         '''
+        static method 
+        inputs - a Dataset instance and a list of percentage
+        splits the dataset into multiple partitions based on the provided percentages  
+        returns a list of Dataset instances, each corresponding to one of the partitions. The percentages indicate the size of each partition relative to the total number of patients in the original dataset. For example, if the input dataset contains 100 patients and the percentages are [60, 20, 20], then the method will return a list containing three Dataset instances: the first with 60 patients, the second with 20 patients, and the third with 20 patients. The method shuffles the patients before splitting them, to make sure that the splits are randomized.
+        '''
+        '''
         Splits a dataset to different datasets, e.g., [training-validation-test].
         Inputs:
             - dataset: the dataset, an instance of Dataset.
@@ -138,6 +154,14 @@ class Dataset:
     
     @staticmethod
     def _split_list(list_input, percentage_partitions):
+        '''
+        private static method 
+        splits a given list into several partitions based on provided percentages. 
+        inputs- list_input (the list that is to be partitioned) and percentage_partitions (list of integers that represent the percentage of elements in each partition)
+        returns a list of partitions, where each partition is a list of elements from list_input
+        works by iterating through each percentage in percentage_partitions. For each percentage, it calculates the number of elements that should be included in that partition based on the total length of list_input.
+        It then uses this number to slice list_input and append the resulting sublist to list_toret. The method ensures that the final partition contains all the remaining elements of list_input. Finally, the method asserts that the length of all partitions added together is equal to the length of list_input and that the set of elements in all partitions is equal to the set of elements in list_input.
+        '''
         list_toret = []
         for idx_percentage, percentage in enumerate(percentage_partitions):
             picked_so_far = sum([len(u) for u in list_toret])
@@ -155,6 +179,13 @@ class Dataset:
     @staticmethod
     def labelbalanced_splits_from(dataset, percentage_partitions,\
                                   func_getlabel_of_patient, verbose=False):
+        '''
+        static method 
+        splits a given dataset into different datasets with a balanced distribution of labels across all partitions. 
+        inputs - dataset to be split, percentage_partitions (list of percentages for each partition), and a func_getlabel_of_patient (maps a patient to its label)
+        First, it creates a dictionary dict_label_to_listpatients that maps each label to a list of patients with that label in the input dataset. It then splits the list of patients corresponding to each label based on the percentage_partitions. For this, it shuffles the list of patients, uses the _split_list function to partition it into different sub-lists, and stores them in a dictionary dict_label_to_listpartitions.
+        Finally, the method aggregates the splits from each class into num_chunks splits that have a balanced distribution of labels. It then creates a new dataset object for each partition and returns a list of them. The method also performs some assertions to ensure the correctness of the output. If verbose is set to True, it reports the frequency of labels in each partition.
+        '''
         '''
         Splits a dataset to different datasets, e.g., [training-validation-test] such that all partitions
         have equal share from different classes.
@@ -217,6 +248,12 @@ class Dataset:
     @staticmethod
     def create_onetoone(str_dsname, rootdir, imgsprefix,\
                         func_get_patientrecords, func_get_wsiinfos):
+        '''
+        static method 
+        creates a dataset from a directory containing one WSI per patient, where each WSI file has a specific prefix. 
+        input - the name of the dataset, the root directory, the prefix of the images, and two functions: func_get_patientrecords (extract the patient information from the file name) and func_get_wsiinfos (extract information from the WSI file). 
+        creates a Record object for each WSI file, and then creates a Patient object for each record, where the record is added to the patient's dictionary of records. Finally, it creates a Dataset object from the list of patients and returns it.
+        '''
         '''
         If there is a one to one mapping between patients and images (i.e. one image per patient)
         this function can create the dataset.
