@@ -18,6 +18,13 @@ from pydmed.utils.output import StreamWriter
 
 
 class ProcessedPiece:
+    '''
+    represents a small processed chunk of data and its associated statistics. 
+    stat - represents the statistics of the processed data. If the data argument is not None, then stat is set to data.
+    source_smallchunk- represents the original SmallChunk object from which the data was collected. It is stored as a reference to the object
+    data- the processed data. If None, then the stat argument must be provided.
+    If both data and stat are provided, an exception is raised. After initialization, the source_smallchunk.data attribute is set to "None", to avoid memory leak
+    '''
     def __init__(self, source_smallchunk, data=None, stat=None):
          '''
          Note: stat and data are the same. The two arguments are added to support previous versions.
