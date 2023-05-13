@@ -69,17 +69,34 @@ class StreamWriter(mp.Process):
                                     quotechar='"', quoting=csv.QUOTE_MINIMAL
                                     ) for f in self.list_files]
         #make mp stuff ========
+        '''
+        two mp.Queue objects:
+        1. queue_towrite is used to pass data to the writing process.
+        2. queue_signal_end is used to signal the end of writing process.
+        3. flag_closecalled is used to indicate whether the close method has been called or not. Once close is called, writing would be disabled.
+        '''
         self.queue_towrite = mp.Queue() #there is one queue in both operating modes.
         self.queue_signal_end = mp.Queue() #this queue not empty means "close"
         self.flag_closecalled = False #once close is called, writing would be disabled.
     
     def flush_and_close(self):
+        '''
+        1. flushes any remaining data in the queue_towrite
+        2. sleeps for the waiting_time_before_flush period
+        3. adds a "stop" signal to the queue_signal_end to signal that writing is complete and the process can be terminated
+        When the StreamWriter process receives the "stop" signal from queue_signal_end, it will stop writing to the file and terminate.
+        '''
         self.flag_closecalled = True
         time.sleep(self.waiting_time_before_flush)
         self.queue_signal_end.put_nowait("stop")
     
     
     def run(self):
+        '''
+        executed when an instance of the class is started as a separate process. The method runs an infinite loop where it checks if the queue_signal_end has any item in it. 
+        If the queue has any item in it, it means that the flush_and_close method has been called, so the loop should be terminated, and all open files should be flushed and closed. 
+        If the queue does not have any item in it, the method executes the _wrt_patrol method, which is responsible for writing any data added to the queue_towrite by the main program to the appropriate CSV file.
+        '''
         while True:
             if(self.queue_signal_end.qsize()>0):
                 #execute flush_and_close ==========
@@ -96,6 +113,11 @@ class StreamWriter(mp.Process):
     
     def write(self, patient, str_towrite):
         '''
+        writes a string to file(s) in a separate process. Depending on the op_mode attribute, it either writes to a single CSV file or writes to individual files for each patient.
+        If the close method has been called previously, it raises a warning message and does not write anything. 
+        Else, it puts a dictionary containing the patient and string to be written into a multiprocessing queue, which is checked in the _wrt_patrol method and used to write the string to file(s) in the separate process.
+        '''
+        '''
         Writes to file (s).
         Inputs.
             - patient: an instance of `Patient`. This argument is ignored
@@ -108,6 +130,13 @@ class StreamWriter(mp.Process):
             print("`StreamWriter` cannot `write` after calling the `close` function.")
     
     def _wrt_patrol(self):
+        '''
+        private method 
+        checks if there are elements in the queue_towrite and writes the first one to the corresponding file(s) if there are.
+        If the op_mode is 1, it writes the str_towrite to the first file in list_files.
+        If the op_mode is 2, it extracts the patient and str_towrite from the first element in the queue, checks that patient is in list_patients, finds the index of the patient in the list, and writes str_towrite to the file corresponding to that patient index in list_files.
+        If there are no elements in the queue, the method does nothing.
+        '''
         '''
         Pops/writes one element from the queue
         '''
@@ -129,6 +158,13 @@ class StreamWriter(mp.Process):
             
         
     def _wrt_onclose(self):
+        '''
+        responsible for popping and writing all remaining elements from the queue_towrite queue when the close function is called. 
+        It first retrieves the size of the queue and iterates over all the elements using a for loop. It then pops each element and writes it to the corresponding file based on the operation mode. 
+            1. If op_mode is 1, it writes to the first file in list_files
+            2. If op_mode is 2, it looks up the index of the corresponding patient in list_patients and writes to the corresponding file in list_files. 
+        Any exception that occurs during the popping and writing of elements is caught and ignored.
+        '''
         '''
         Pops/writes all elements of the queue.
         '''
