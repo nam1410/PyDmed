@@ -22,6 +22,10 @@ from pydmed.lightdl import *
 
 class LabelBalancedDL(pydmed.lightdl.LightDL):
     '''
+    inherits from the LightDL
+    purpose is to ensure that the returned small chunks are balanced in terms of label frequency
+    '''
+    '''
     This dataloader makes sure that the returned smallchunks are have a balanced label
             frequency.
     Inputs.
@@ -32,6 +36,11 @@ class LabelBalancedDL(pydmed.lightdl.LightDL):
         https://github.com/amirakbarnejad/PyDmed/blob/8575ea991fe464b6e451d1a3381f9026581153da/pydmed/lightdl.py#L292
     '''
     def __init__(self, func_getlabel_of_patient, *args, **kwargs):
+        '''
+        attributes:
+        possible_labels - a list of all possible classes in the dataset
+        dict_label_to_listpatients- a dictionary that maps each class to a list of patients in the dataset with that label. To create dict_label_to_listpatients, the code loops through all the patients in the dataset and applies func_getlabel_of_patient to get their label. It then adds the patient to the corresponding list in dict_label_to_listpatients.
+        '''
         '''
         Inputs.
         - func_getlabel_of_patient: a function that takes in a `Patient` and returns
@@ -58,6 +67,12 @@ class LabelBalancedDL(pydmed.lightdl.LightDL):
         self.dict_label_to_listpatients = dict_label_to_listpatients
     
     def initial_schedule(self):
+        '''
+        initialize the schedule for loading the big chunks of data
+        splits the big chunks of data into smaller chunks, which will be processed in parallel by different threads
+        first calculates the average number of big chunks that each label should have, based on the total number of big chunks and the number of possible labels. Then, it creates a list list_binsize with the number of big chunks that each label should have. If the number of big chunks is not evenly divisible by the number of possible labels, then the remaining chunks are added one by one to the first num_toadd labels in the list.
+        creates a list of patients toret_list_patients by randomly selecting patients from the different classes in proportion to the number of big chunks that each class should have. This list is returned as the initial schedule for loading big chunks.
+        '''
         # ~ print("override initsched called.")
         #split numbigchunks to lists of almost equal length ======
         avg_inbin = self.const_global_info["num_bigchunkloaders"]/len(self.possible_labels)
@@ -76,6 +91,11 @@ class LabelBalancedDL(pydmed.lightdl.LightDL):
         return toret_list_patients
     
     def schedule(self):
+        '''
+        override of the schedule in LightDL
+        selects a patient to remove based on a random choice from the list of currently loaded patients. Then it chooses a patient to load based on which class (i.e., label) has the smallest number of currently loaded patients. The minority label is determined using the multiminority function from pydmed.utils.minimath, which returns the label(s) that have the smallest number of loaded patients.
+        selects candidate patients to load from the minority class using toadd_candidates. It calculates a weight for each candidate patient based on the number of times it has been scheduled to load. It gives a higher priority to patients that have not been loaded yet. Finally, it chooses a patient to load using these weights, and returns the selected patient to load and the selected patient to remove.
+        '''
         # ~ print("override sched called.")
         #get initial fields ==============================
         list_loadedpatients = self.get_list_loadedpatients()
