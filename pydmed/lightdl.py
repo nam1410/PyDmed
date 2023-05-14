@@ -26,7 +26,6 @@ from multiprocessing import Process, Queue
 import pydmed.utils.multiproc
 from pydmed.utils.multiproc import *
 
-
 '''
 Global enumerations. 
 As enum is only supported for python 3.4+, pydmed uses some global variables.
@@ -35,6 +34,9 @@ PYDMEDRESERVED_HALTDL = "PYDMEDRESERVED_HALTDL"
 PYDMEDRESERVED_DLRETURNEDLASTINSTANCE = "PYDMEDRESERVED_DL_RETURNED_LAST_INSTANCE"
 
 def get_default_constglobinf():
+    '''
+    returns a dictionary with default values for various parameters, such as the number of big chunk loaders, maximum length of the small chunk and light DL queues, rescheduling interval, and core assignments
+    '''
     toret = {
         "num_bigchunkloaders":10,
         "maxlength_queue_smallchunk":100,
@@ -50,6 +52,12 @@ def get_default_constglobinf():
 class BigChunk:
     def __init__(self, data, dict_info_of_bigchunk, patient):
         '''
+        represents a large chunk of data
+        data-  the data part of the big chunk, represented as a numpy ndarray.
+        dict_info_of_bigchunk- a dictionary containing additional information about the big chunk, such as its position within the patient's image
+        patient- an instance of the utils.data.Patient class, which represents a patient's data
+        '''
+        '''
         Implementation of a "Big Data Chunk".
         Inputs:
             - data: the data part (e.g., a patch of size 1000x1000), an instance of numpy.ndarray.
@@ -63,6 +71,13 @@ class BigChunk:
         self.patient = patient
 
 class SmallChunk:
+    '''
+    represents a small chunk of data
+    data-  the data part of the small chunk, represented as a numpy ndarray
+    dict_info_of_smallchunk - a dictionary containing additional information about the small chunk
+    dict_info_of_bigchunk- a dictionary containing additional information about the big chunk, such as its position within the patient's image
+    patient- an instance of the utils.data.Patient class, which represents a patient's data
+    '''
     def __init__(self, data, dict_info_of_smallchunk, dict_info_of_bigchunk, patient):
         '''
         Implementation of a "Big Data Chunk".
@@ -82,6 +97,10 @@ class SmallChunk:
 
 
 class BigChunkLoader(mp.Process):
+    '''
+    inherits from mp.Process
+    represents a process that loads big chunks of data for a patient. Its main purpose is to extract a big chunk of data for a patient and put it into a queue for further processing
+    '''
     def __init__(self, patient, queue_bigchunk, const_global_info, queue_logs, old_checkpoint, last_message_from_root):
         '''
         Inputs:
@@ -110,6 +129,11 @@ class BigChunkLoader(mp.Process):
         return self.old_checkpoint
         
     def run(self):
+        '''
+        method executed when the process starts
+        The method first sets a random seed using the current time, then assigns the process to a specific CPU core if the core-assignment dictionary in const_global_info contains a value for "bigchunkloaders".
+        Next, the method calls the extract_bigchunk method to extract a bigchunk and puts it in the queue_bigchunk. 
+        '''
         """Loads a bigchunk and waits for the patchcollector to enqueue the bigchunk."""
         
         #set random seed using time ====
@@ -135,12 +159,20 @@ class BigChunkLoader(mp.Process):
     
     def log(self, str_input):
         '''
+        logs a string to the log file by putting the string into the multiprocessing queue _queue_logs.
+        '''
+        '''
         Logs to the log file, i.e. the file with `fname_logfile`.
         '''
         self._queue_logs.put_nowait(str_input)
     
     @abstractmethod     
     def extract_bigchunk(self, last_message_fromroot):
+        '''
+         abstract method - needs to be implemented in the subclass of BigChunkLoader. 
+         extracts and returns a bigchunk, where the bigchunk is a large piece of data (e.g., a patch of size 1000x1000) from a patient's data. 
+         takes last_message_fromroot as input, which is the last message sent to patient using the function lightdl.send_message. The method has access to the attributes self.patient and self.const_global_info.
+        '''
         '''
         Extract and return a bigchunk.
         Inputs:
@@ -154,6 +186,12 @@ class BigChunkLoader(mp.Process):
 
 
 class SmallChunkCollector(mp.Process):
+    '''
+    class inherits from mp.Process
+    represents a process that is intended to extract and enqueue small chunks from a Patient instance. 
+    process extracts small chunks of data from the Patient instance, and it enqueues them into a queue. To do this, it instantiates a BigChunkLoader instance of the type specified by the type_bigchunkloader argument and uses it to extract a big chunk. It then splits the big chunk into smaller chunks and enqueues them into the queue_smallchunks.
+    The class has several internal variables such as _cached_checkpoint, _queue_status, _cached_status, and _queue_bigchunkloader_terminated that are used to cache the checkpoint, status, and big chunk loader's termination status. These variables are also used to communicate with other processes that use the SmallChunkCollector.
+    '''
     def __init__(self, patient, queue_smallchunks, const_global_info,\
                 type_bigchunkloader, queue_logs, old_checkpoint, queue_checkpoint, last_message_from_root):
         '''
@@ -186,11 +224,17 @@ class SmallChunkCollector(mp.Process):
         
     def log(self, str_input):
         '''
+        log a message to the queue _queue_logs
+        '''
+        '''
         Logs to the log file, i.e. the file with `fname_logfile`.
         '''
         self._queue_logs.put_nowait(str_input)
     
     def set_status(self, status):
+        '''
+        set the status of the SmallChunkCollector - any pickleable object that can be set by the caller.
+        '''
         '''
         This function sets the status of smallchunkloader.
         The dataloader can read the status of the SmallChunkCollector by calling `SmallChunkCollector.get_status`.
@@ -200,6 +244,9 @@ class SmallChunkCollector(mp.Process):
         self._queue_status.put_nowait(status)
     
     def get_status(self):
+        '''
+        If there is no new status available, it returns the last cached status.
+        '''
         '''
         This function returns the last status of `SmallChunkCollector`, which is previously set
         by calling the function `SmallChunkCollector.set_status`.
@@ -225,6 +272,10 @@ class SmallChunkCollector(mp.Process):
             return self._cached_status
     
     def get_checkpoint(self):
+        '''
+        used to get the checkpoint that is cached in the instance. 
+        If the cache is empty, it returns the old_checkpoint.
+        '''
         if(isinstance(self._cached_checkpoint, str)):
             if(self._cached_checkpoint == "TODO:packagename reserverd: empty cache"):
                 return self.old_checkpoint
@@ -234,10 +285,19 @@ class SmallChunkCollector(mp.Process):
             return self._cached_checkpoint
     
     def set_checkpoint(self, checkpoint):
+        '''
+        used to set the checkpoint of the SmallChunkCollector.
+        The checkpoint is placed in the queue queue_checkpoint and is also cached in the instance.
+        '''
         self.queue_checkpoint.put_nowait(checkpoint)
         self._cached_checkpoint = checkpoint
     
     def run(self):
+        '''
+        called when the SmallChunkCollector instance is started as a separate process using the start() method.
+        first sets the random seed using the current time and assigns the process to a specific core if specified in the configuration. 
+        It then creates a subprocess to load a bigchunk and waits for it to finish loading before starting to extract small chunks from it. The bigchunk is obtained from a multiprocessing queue. Once obtained, the method enters a loop where it repeatedly extracts small chunks from the bigchunk and places them in the queue_smallchunks queue until the queue reaches its maximum size - details = extract_smallchunk method is called to extract each small chunk from the bigchunk. The method logs its progress and status updates to the log file and updates the status of the SmallChunkCollector. Once a small chunk is extracted, it is placed in the queue_smallchunks queue for the data loader process to consume. If the extract_smallchunk method returns None, the small chunk is not added to the queue. The loop continues until the process is terminated or interrupted.
+        '''
         '''
         Loads a bigchunk, waits for the bigchunk to be loaded, and then makes calls to
         self.extract_smallchunk.
@@ -295,6 +355,9 @@ class SmallChunkCollector(mp.Process):
                 #print("     placed a smallchunk in queue.")
         
     def get_flag_bigchunkloader_terminated(self):
+        '''
+        checks if the _queue_bigchunkloader_terminated attribute has any items in it. If it does, it returns True, indicating that the big chunk loader has finished loading a big chunk. Otherwise, it returns False.
+        '''
         try:
             if(self._queue_bigchunkloader_terminated.qsize() > 0):
                 return True
@@ -306,6 +369,9 @@ class SmallChunkCollector(mp.Process):
     
     @abstractmethod     
     def extract_smallchunk(self, call_count, bigchunk, last_message_fromroot):
+        '''
+        abstract method - needs to be implemented by a subclass of SmallChunkCollector
+        '''
         '''
         Extract and return a smallchunk. Please note that in this function you have access to 
         self.bigchunk, self.patient, self.const_global_info.
@@ -329,6 +395,16 @@ class LightDL(mp.Process):
     def __init__(self, dataset, type_bigchunkloader, type_smallchunkcollector,\
                  const_global_info, batch_size, tfms, flag_grabqueue_onunsched=True, collate_func=None, fname_logfile=None,
                  flag_enable_sendgetmessage = True, flag_enable_setgetcheckpoint = True):
+        '''
+        inherits from mp.Process
+        initializes the instance variables inputs, the transformation function (tfms). The class also has flags to enable/disable sending and getting messages (flag_enable_sendgetmessage) and setting/getting checkpoints (flag_enable_setgetcheckpoint).
+        active_subprocesses - keeps track of currently active processes
+        dict_patient_to_schedcount - dictionary that keeps track of the number of times SmallChunkCollector has been scheduled for each patient 
+        list_smallchunksforvis - a list of small chunks for visualization purposes
+        _queue_logs - a queue that stores log messages
+        If the flag flag_enable_setgetcheckpoint is True, dict_patient_to_checkpoint is a dictionary that keeps track of the last checkpoint for each patient, and _dict_patient_to_queueckpoint is a dictionary that maps each patient to a queue for storing checkpoints.
+        If the flag flag_enable_sendgetmessage is True, _queue_messages_to_subprocs is a dictionary that maps each patient to a queue for storing messages to be sent to subprocesses.
+        '''
         '''
         Inputs:
             - dataset: an instance of pydmed.utils.Dataset.
@@ -381,6 +457,11 @@ class LightDL(mp.Process):
             self.logfile = open(self.fname_logfile, "a")
     
     def flush_log(self):
+        '''
+        used to flush the contents of the log queue to the log file
+        If a fname_logfile was provided during initialization, then the log file will be opened and the log messages in the queue will be written to the file. 
+        If no fname_logfile was provided, then the method does nothing.
+        '''
         if(self.fname_logfile == None):
             return #DO nothing
         size_queue_log = self._queue_logs.qsize()
@@ -395,11 +476,19 @@ class LightDL(mp.Process):
             
     def log(self, str_input):
         '''
+        used to add a log message to the log queue
+        '''
+        '''
         Logs to the log file, i.e. the file with `fname_logfile`.
         '''
         self._queue_logs.put_nowait(str_input)
         
     def send_message(self, patient, message):
+        '''
+        used to send a message to a subprocess corresponding to a patient. 
+        The message will be added to a queue for the patient, and the message will be received by the subprocess when it is scheduled to run. 
+        The message can be accessed in the SmallChunkCollector.extract_smallchunk() and BigChunkLoader.extract_bigchunk() methods.
+        '''
         '''
         Sends message to a subprocess corresponding to the patient. 
         Once the subproc is schedulled to run, it will recieve the last sent message. 
@@ -410,6 +499,10 @@ class LightDL(mp.Process):
     
     @staticmethod
     def _terminaterecursively(pid):
+        '''
+        static method - recursively terminates all child processes of a given process ID (pid) and the parent process itself
+        terminates the subprocesses that were created by the LightDataLoader instance
+        '''
         parent = psutil.Process(pid)#TODO:copyright, https://www.reddit.com/r/learnpython/comments/7vwyez/how_to_kill_child_processes_when_using/
         for child in parent.children(recursive=True):
             try:
@@ -424,6 +517,11 @@ class LightDL(mp.Process):
             pass
     
     def pause_loading(self):
+        '''
+        used to pause the data loading process by killing the LightDataLoader subprocess
+        retrieves the PID of the LightDataLoader process from the queue and then terminates it using the _terminaterecursively method
+        also flushes the log file using the flush_log method
+        '''
         lightdl_pid = self._queue_pid_of_lightdl.get()
         self.flush_log()
         parent = psutil.Process(lightdl_pid)#TODO:copyright, https://www.reddit.com/r/learnpython/comments/7vwyez/how_to_kill_child_processes_when_using/
@@ -440,6 +538,12 @@ class LightDL(mp.Process):
             pass
     
     def is_dl_running(self):
+        '''
+        used to check if the data loading process is still running
+        checks the size of the self._queue_message_lightdlfinished queue. 
+        If there are any messages in the queue, it means that the data loading process has finished and the method returns False
+        If the queue is empty, it means that the data loading process is still running and the method returns True
+        '''
         '''
         If the DL is still working, returns True.
         Otherwise returns False.
@@ -465,6 +569,11 @@ class LightDL(mp.Process):
         
     def visualize(self, func_visualize_one_patient):
         '''
+        visualizes the collected instances by LightDL by separating the collected small chunks based on patients
+        calls the func_visualize_one_patient function for each patient
+        func_visualize_one_patient - passed in as an argument to the visualize method, and it should visualize a specific patient given all small chunks collected for that patient
+        '''
+        '''
             When visualizing the collected instances by lightdl, you should call `visualize` function.
             You should pass in the function `func_visualize_one_patient` that works as follows:        
                 Given all smallchunks collected for a specific patient, this function
@@ -484,6 +593,11 @@ class LightDL(mp.Process):
     
     @staticmethod
     def default_collate(list_smallchunks, tfms):
+        '''
+        static method - takes a list of small chunks and applies any transformations specified by tfms to the data in the small chunks. 
+        It then stacks the data from all small chunks into a tensor x and returns x, along with a list of patients and a list of small chunks. 
+        The data attribute of each small chunk is set to "None to avoid memory leak" to prevent memory leaks.
+        '''
         list_data = [smallchunks.data for smallchunks in list_smallchunks]
         if(tfms != None):
             for n in range(len(list_data)): #apply transforms
@@ -496,6 +610,12 @@ class LightDL(mp.Process):
         return x, list_patients, list_smallchunks
     
     def get(self):
+        '''
+        responsible for retrieving a batch of data instances from the internal queue
+        checks whether the data loader is still running or not. If the data loader is still running, the method tries to retrieve instances from the queue until it has collected enough instances to make up a batch of the specified size. If the queue is empty and the data loader has finished running, the method returns a flag indicating that it is the last batch to be returned. 
+        If the data loader is not running, the method retrieves a single instance from the queue regardless of the batch size, until it has retrieved at least one instance. If the queue is empty and the data loader is not running, the method returns the flag indicating that it is the last batch to be returned.
+        Once the instances are retrieved, the method applies the collate function specified in the constructor to convert the list of instances to a batch tensor and returns it. Finally, the method creates a new list of small chunks, similar to the input list but with the actual data replaced with the string "None to avoid memory leak", and adds these data-free small chunks to the internal list used for visualization. This is done to prevent memory leaks from accumulating during the lifetime of the LightDL object.
+        '''
         #make toret values =================
         list_poped_smallchunks = []
         flag_dl_running = self.is_dl_running()
@@ -552,6 +672,9 @@ class LightDL(mp.Process):
     
     def get_list_loadedpatients(self):
         '''
+        returns a list of Patient instances that are currently being loaded (one SmallChunkCollector is collecting SmallChunks from them)
+        '''
+        '''
         Returns the list of `Patient`s that are loaded, 
         i.e., one `SmallChunkCollector` is collecting `SmallChunk`s from them. 
         '''
@@ -561,6 +684,9 @@ class LightDL(mp.Process):
     
     
     def get_list_waitingpatients(self):
+        '''
+        returns a list of Patient instances that are not currently being loaded (no SmallChunkCollector is collecting SmallChunks from them)
+        '''
         '''
         Returns the list of `Patient`s that are not loaded, 
         i.e., no `SmallChunkCollector` is collecting `SmallChunk`s from them. 
@@ -572,6 +698,9 @@ class LightDL(mp.Process):
     
     
     def get_schedcount_of(self, patient):
+        ''' 
+        given a patient, returns the number of times the patient has been scheduled for loading in the past
+        '''
         '''
         Reuturns the number of times that a specific `Patient` has
         been schedulled by scheduller.
@@ -580,6 +709,10 @@ class LightDL(mp.Process):
     
      
     def initial_schedule(self):
+        '''
+        used for selecting the initial BigChunks to load
+        returns a list of Patient instances with a length equal to self.const_global_info["num_bigchunkloaders"]
+        '''
         '''
         Used for selecting the initiail BigChunks.
         This funciton has to return,
@@ -591,6 +724,13 @@ class LightDL(mp.Process):
                               k=self.const_global_info["num_bigchunkloaders"])
         
     def schedule(self):
+        '''
+        called when scheduling a new patient (loading a new BigChunk)
+        returns the patient to remove (an instance of utils.data.Patient) and the patient to load (an instance of utils.data.Patient)
+        main scheduling algorithm - selects a patient to remove (unload from memory) and a patient to load (load into memory)
+        The algorithm selects a patient to remove randomly from the list of currently loaded patients and selects a patient to load based on the number of times it has been scheduled in the past. 
+        Patients that have not been scheduled before are given a high weight to increase the chance of selecting them, while patients that have been scheduled multiple times are given a lower weight. The specific weights are calculated based on the number of times each patient has been scheduled using the get_schedcount_of() method.
+        '''
         '''
         This function is called when schedulling a new patient, i.e., loading a new BigChunk.
         This function has to return:
