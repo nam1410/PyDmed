@@ -766,6 +766,18 @@ class LightDL(mp.Process):
         try:
         
             #assign to core
+            '''
+            begins by scheduling an initial set of patients. These patients are distributed to subprocesses that will load and prepare their data.
+            It then enters a loop that runs indefinitely. In this loop, it repeatedly checks for data that has been prepared by the subprocesses and adds it to a queue that will be used to feed the model. 
+            The loop also monitors the status of the subprocesses and replaces them if necessary. This is done by calling a method called "schedule". This method returns two patients: one that needs to be removed from the set of active subprocesses, and another that should be added to the set. If the first patient is a special string called "PYDMEDRESERVED_HALTDL", the loop is broken and the process is terminated. Otherwise, the subprocess associated with the first patient is removed from the set, and its last checkpoint (a representation of the state of the subprocess) is saved. 
+            If the flag flag_grabqueue_onunsched is set to true, the loop will also take the data that has already been loaded by the subprocess and adds it to the queue. Finally, a new subprocess is created to load the data for the second patient. This loop is designed to continuously feed model with new data as soon as it becomes available and to replace subprocesses that have finished loading their data.
+            details:
+            The first if statement checks whether the lightdl process has been assigned to a specific CPU core. If it has, then it uses the taskset command to bind the current process to the same core as the lightdl process. This is done to avoid the overhead of context switching. Then it saves the current process ID to a queue so that it can be used to recursively terminate the lightdl process when the script is finished.
+            The initial_schedule() function is called to create a list of Patient objects that will be used to load the first batch of big chunks. A loop is started to load the big chunks of each Patient object in the list returned by initial_schedule(). For each Patient, a subproc object is created using the type_smallchunkcollector() function. The type_smallchunkcollector() function returns an instance of a Process object that is started using the start() method. The subproc object is added to a set called active_subprocesses. The queue_smallchunks attribute of the subproc object is expected to be a multiprocessing.Queue object that contains the  data of the Patient object.
+            After all the Patient objects in the list are processed, the main loop starts. The loop runs indefinitely until the script is stopped. In each iteration of the loop, the queue_lightdl object is checked to see if it has exceeded its maximum size. If it has, then the loop waits until some items are removed from the queue.
+            The loop then checks each subproc object in the active_subprocesses set to see if its queue_smallchunks object is not empty. If it is not empty, then the loop removes an item from the queue_smallchunks object and adds it to the queue_lightdl object.
+            The schedule() function is called to get a new list of Patient objects that will be loaded. If the Patient object returned by schedule() is a special string called PYDMEDRESERVED_HALTDL, then the loop is terminated. If it returns Patient object, then the corresponding subproc object is removed from the active_subprocesses set and a new subproc object is created for the returned Patient object.
+            '''
             if(self.const_global_info["core-assignment"]["lightdl"] != None):
                 # ~ p = psutil.Process()
                 # ~ idx_cores = [int(u) for u in self.const_global_info["core-assignment"]["lightdl"].split(",")]
@@ -957,6 +969,11 @@ class LightDL(mp.Process):
                         new_subproc.start()
                         # ~ print("  reached here 11")
         except Exception as e:
+            '''
+            prints a message stating that an exception has occurred, along with a string representation of the exception object.
+            Then, it gets information about the exception using the sys.exc_info() function. This information includes the type of the exception, the filename of the code that raised the exception, and the line number of the code that raised the exception.
+            Finally, it calls the _terminaterecursively function, passing in self.pid. It's likely that this function terminates the current process recursively, possibly to ensure that all child processes are terminated as well. 
+            '''
             print("An exception occured in LightDL.")
             print(str(e))
             exc_type, exc_obj, exc_tb = sys.exc_info()
